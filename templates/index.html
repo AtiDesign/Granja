@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Painel IoT – ESP32 (Frangos de Corte) • Lite (LittleFS) – Ícones v2</title>
+  <meta name="description" content="Dashboard IoT 100% offline para granja de frangos de corte, com ESP32. Versão Lite: HTML + CSS embutidos, ícones v2 mais representativos.">
+  <style>
+    :root{ --bg:#0f172a; --card:#111827; --muted:#94a3b8; --text:#e2e8f0; --ok:#10b981; --warn:#f59e0b; --bad:#ef4444; }
+    *{box-sizing:border-box}
+    html,body{height:100%; margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Arial, 'Noto Sans', sans-serif; background:var(--bg); color:var(--text)}
+    header{display:flex; gap:1rem; align-items:center; justify-content:space-between; padding:1rem; border-bottom:1px solid #1f2937; position:sticky; top:0; background:#0f172a; z-index:10}
+    header h1{font-size:1.05rem; margin:0}
+    .tag{font-size:.75rem; padding:.2rem .5rem; border-radius:.4rem; color:#0b1b21; background:#93c5fd}
+    .bar{display:flex; flex-wrap:wrap; gap:.75rem; align-items:center}
+    .btn{background:#1f2937; color:var(--text); border:1px solid #334155; padding:.5rem .75rem; border-radius:.45rem; cursor:pointer}
+    .grid{display:grid; gap:1rem}
+    main{padding:1rem; max-width:1100px; margin:0 auto}
+    .cards{grid-template-columns: repeat(auto-fit,minmax(240px,1fr))}
+    .card{background:var(--card); border:1px solid #1f2937; border-radius:.75rem; padding:1rem}
+    .card h3{margin:.2rem 0 .6rem; font-size:1rem; color:#cbd5e1}
+    .muted{color:var(--muted); font-size:.9rem}
+    .row{display:flex; align-items:center; justify-content:space-between; gap:.75rem}
+    .kv{display:flex; gap:.5rem; align-items:center; font-size:.9rem}
+    .badge{padding:.2rem .5rem; border-radius:.5rem; font-size:.75rem; border:1px solid #334155}
+    .form{display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:.75rem}
+    .field{display:flex; flex-direction:column; gap:.25rem}
+    .field label{font-size:.85rem; color:#cbd5e1}
+    .field input, .field select{background:#0b1220; color:var(--text); border:1px solid #1f2937; border-radius:.4rem; padding:.5rem .6rem}
+    footer{padding:1.25rem; text-align:center; color:#94a3b8}
+
+    /* Ícones */
+    .iconWrap{display:flex; align-items:center; justify-content:center; gap:1rem}
+    .icon{width:96px; height:96px}
+    .val{font-weight:700; font-size:1.4rem}
+
+    .ok   { color: var(--ok);   fill: var(--ok);   stroke: var(--ok); }
+    .warn { color: var(--warn); fill: var(--warn); stroke: var(--warn); }
+    .bad  { color: var(--bad);  fill: var(--bad);  stroke: var(--bad); }
+    .idle { color: #64748b; fill:#64748b; stroke:#64748b; }
+
+    /* Ventilador animado quando ligado */
+    .spin { animation: spin 1.2s linear infinite; transform-origin: 50% 50%; }
+    @keyframes spin{ to { transform: rotate(360deg); } }
+
+    /* Switch (toggle) */
+    .switch{position:relative; display:inline-block; width:44px; height:24px}
+    .switch input{opacity:0; width:0; height:0}
+    .slider{position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#475569; transition:.2s; border-radius:999px}
+    .slider:before{position:absolute; content:""; height:18px; width:18px; left:3px; bottom:3px; background:white; transition:.2s; border-radius:50%}
+    input:checked + .slider{background:var(--ok)}
+    input:checked + .slider:before{transform: translateX(20px)}
+
+    code.inline{background:#0b1220; padding:.1rem .25rem; border-radius:.3rem; border:1px solid #1f2937}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="left">
+      <h1>🛠️ Painel IoT – ESP32 (Frangos de Corte) • Lite – Ícones v2</h1>
+      <span class="tag">UNIVESP – Engenharia de Computação</span>
+    </div>
+    <div class="bar">
+      <button id="connectBtn" class="btn">Conectar</button>
+      <label class="kv">Mock
+        <label class="switch"><input id="mockToggle" type="checkbox"><span class="slider"></span></label>
+      </label>
+      <span class="kv muted">Origem: <code class="inline" id="baseShow"></code></span>
+    </div>
+  </header>
+
+  <main>
+    <!-- STATUS DO LOTE -->
+    <section class="grid cards">
+      <div class="card">
+        <h3>Status do Lote</h3>
+        <div class="row">
+          <div>
+            <div class="kv"><span class="muted">Idade:</span><span id="idadeVal">--</span> dias</div>
+            <div class="kv"><span class="muted">Fase:</span><span id="faseVal">--</span></div>
+            <div class="kv"><span class="muted">Faixa ideal:</span><span id="tempRange">--</span></div>
+          </div>
+          <div class="kv"><span class="badge" id="connBadge">desconectado</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Modo de Operação</h3>
+        <div class="row"><div class="kv"><span class="muted">Automático</span></div><label class="switch"><input id="modeToggle" type="checkbox" checked><span class="slider"></span></label></div>
+        <div class="muted">Desative para controle manual dos atuadores</div>
+      </div>
+    </section>
+
+    <!-- SENSORES (ÍCONES) -->
+    <section class="grid cards" style="margin-top:1rem">
+      <div class="card">
+        <h3>Temperatura</h3>
+        <div class="iconWrap">
+          <!-- Termômetro -->
+          <svg id="icoTherm" class="icon idle" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg" aria-label="Termômetro">
+            <rect x="30" y="8" width="12" height="36" rx="6" fill="none" stroke-width="3"/>
+            <circle cx="36" cy="56" r="12" fill="none" stroke-width="3"/>
+            <rect id="thermMercury" x="33" y="26" width="6" height="18" rx="3"/>
+            <circle id="thermBulb" cx="36" cy="56" r="9"/>
+          </svg>
+          <div>
+            <div class="val" id="tempVal">-- °C</div>
+            <div class="muted">Dentro da faixa? <span id="tempFlag">--</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Umidade</h3>
+        <div class="iconWrap">
+          <!-- Gota -->
+          <svg id="icoHum" class="icon idle" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg" aria-label="Umidade">
+            <path d="M36 8 C36 8, 18 28, 18 42 a18 18 0 0 0 36 0 C54 28, 36 8, 36 8z" fill="none" stroke-width="3"/>
+            <path id="humFill" d="M18 42 a18 18 0 0 0 36 0" />
+          </svg>
+          <div>
+            <div class="val" id="humVal">-- %</div>
+            <div class="muted">Alvo típico: 50–70%</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Amônia (NH₃)</h3>
+        <div class="iconWrap">
+          <!-- Nuvem / gás -->
+          <svg id="icoNh3" class="icon idle" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg" aria-label="NH3">
+            <path d="M24 44h26a10 10 0 0 0 0-20 14 14 0 0 0-26-4A10 10 0 1 0 24 44z" fill="none" stroke-width="3"/>
+            <circle id="nh3Dot1" cx="30" cy="36" r="3"/>
+            <circle id="nh3Dot2" cx="42" cy="34" r="3"/>
+            <circle id="nh3Dot3" cx="36" cy="28" r="3"/>
+          </svg>
+          <div>
+            <div class="val" id="nh3Val">-- ppm</div>
+            <div class="muted">Limite: <span id="nh3Limit">25</span> ppm</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Luminosidade</h3>
+        <div class="iconWrap">
+          <!-- Sol / lâmpada -->
+          <svg id="icoLux" class="icon idle" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg" aria-label="Luminosidade">
+            <circle cx="36" cy="36" r="10" fill="none" stroke-width="3"/>
+            <g stroke-width="3" stroke-linecap="round">
+              <line x1="36" y1="8" x2="36" y2="18"/>
+              <line x1="36" y1="54" x2="36" y2="64"/>
+              <line x1="8" y1="36" x2="18" y2="36"/>
+              <line x1="54" y1="36" x2="64" y2="36"/>
+              <line x1="16" y1="16" x2="22" y2="22"/>
+              <line x1="50" y1="50" x2="56" y2="56"/>
+              <line x1="50" y1="22" x2="56" y2="16"/>
+              <line x1="16" y1="56" x2="22" y2="50"/>
+            </g>
+          </svg>
+          <div>
+            <div class="val" id="luxVal">-- lx</div>
+            <div class="muted">Alvo: <span id="luxTargetShow">30</span> lx</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ATUADORES (Ícones v2) -->
+    <section class="grid cards" style="margin-top:1rem">
+      <div class="card">
+        <h3>Ventiladores</h3>
+        <div class="row">
+          <div class="iconWrap">
+            <!-- Ventilador v2: grade + hélice 3 pás -->
+            <svg id="icoFan" class="icon idle" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-label="Ventilador">
+              <circle cx="48" cy="48" r="34" fill="none" stroke-width="4"/>
+              <circle cx="48" cy="48" r="42" fill="none" stroke-width="4"/>
+              <g stroke-width="3" stroke-linecap="round" opacity="0.6">
+                <line x1="48" y1="6"  x2="48" y2="90"/>
+                <line x1="6"  y1="48" x2="90" y2="48"/>
+                <line x1="16" y1="16" x2="80" y2="80"/>
+                <line x1="80" y1="16" x2="16" y2="80"/>
+              </g>
+              <circle cx="48" cy="48" r="6"/>
+              <g class="fanBlades">
+                <path d="M48 16c10 0 14 8 10 16c-4 8-12 12-12 16s8 8 12 16c4 8 0 16-10 16
+                         c-10 0-18-6-18-14c0-8 8-14 8-18s-8-10-8-18c0-8 8-14 18-14z"/>
+              </g>
+            </svg>
+            <div class="val" id="fanStatus">OFF</div>
+          </div>
+          <label class="switch"><input id="fanToggle" type="checkbox" disabled><span class="slider"></span></label>
+        </div>
+        <div class="muted">Verde = ligado • Vermelho = desligado</div>
+      </div>
+
+      <div class="card">
+        <h3>Exaustores</h3>
+        <div class="row">
+          <div class="iconWrap">
+            <!-- Exaustor v2: grelha + setas de fluxo saindo -->
+            <svg id="icoExh" class="icon idle" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-label="Exaustor">
+              <rect x="14" y="22" width="52" height="52" rx="6" fill="none" stroke-width="4"/>
+              <g stroke-width="3" opacity="0.7">
+                <line x1="18" y1="32" x2="62" y2="32"/>
+                <line x1="18" y1="44" x2="62" y2="44"/>
+                <line x1="18" y1="56" x2="62" y2="56"/>
+                <line x1="18" y1="68" x2="62" y2="68"/>
+              </g>
+              <g stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M68 36 L88 36"/>
+                <path d="M78 30 L88 36 L78 42"/>
+                <path d="M68 60 L88 60"/>
+                <path d="M78 54 L88 60 L78 66"/>
+              </g>
+            </svg>
+            <div class="val" id="exhStatus">OFF</div>
+          </div>
+          <label class="switch"><input id="exhToggle" type="checkbox" disabled><span class="slider"></span></label>
+        </div>
+        <div class="muted">Verde = ligado • Vermelho = desligado</div>
+      </div>
+
+      <div class="card">
+        <h3>Aquecedor</h3>
+        <div class="row">
+          <div class="iconWrap">
+            <!-- Aquecedor v2: radiador + ondas de calor -->
+            <svg id="icoHeat" class="icon idle" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-label="Aquecedor">
+              <rect x="14" y="30" width="68" height="40" rx="6" fill="none" stroke-width="4"/>
+              <g stroke-width="3" opacity="0.85">
+                <line x1="24" y1="34" x2="24" y2="70"/>
+                <line x1="34" y1="34" x2="34" y2="70"/>
+                <line x1="44" y1="34" x2="44" y2="70"/>
+                <line x1="54" y1="34" x2="54" y2="70"/>
+                <line x1="64" y1="34" x2="64" y2="70"/>
+                <line x1="74" y1="34" x2="74" y2="70"/>
+              </g>
+              <g stroke-width="4" stroke-linecap="round">
+                <path d="M24 20 q6 -6 12 0 q6 6 12 0" fill="none"/>
+                <path d="M48 20 q6 -6 12 0 q6 6 12 0" fill="none"/>
+              </g>
+            </svg>
+            <div class="val" id="heatStatus">OFF</div>
+          </div>
+          <label class="switch"><input id="heatToggle" type="checkbox" disabled><span class="slider"></span></label>
+        </div>
+        <div class="muted">Verde = ligado • Vermelho = desligado</div>
+      </div>
+
+      <div class="card">
+        <h3>Iluminação</h3>
+        <div class="row">
+          <div class="iconWrap">
+            <!-- Lâmpada/sol (mantido) -->
+            <svg id="icoLight" class="icon idle" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg" aria-label="Iluminação">
+              <path d="M36 14 a16 16 0 0 1 16 16 c0 8 -6 10 -8 16 h-16 c-2 -6 -8 -8 -8 -16 a16 16 0 0 1 16 -16z" fill="none" stroke-width="3"/>
+              <rect x="28" y="46" width="16" height="6" rx="2"/>
+            </svg>
+            <div class="val" id="lightStatus">OFF</div>
+          </div>
+          <label class="switch"><input id="lightToggle" type="checkbox" disabled><span class="slider"></span></label>
+        </div>
+        <div class="muted">Verde = ligado • Vermelho = desligado</div>
+      </div>
+    </section>
+
+    <!-- CONFIGURAÇÕES -->
+    <section class="grid cards" style="margin-top:1rem">
+      <div class="card">
+        <h3>Configurações</h3>
+        <div class="form">
+          <div class="field"><label>Data de nascimento do lote</label><input id="loteStart" type="date"></div>
+          <div class="field"><label>Programa de luz (lux alvo)</label><input id="luxTarget" type="number" min="0" value="30"></div>
+          <div class="field"><label>Amônia (ppm) – limite máximo</label><input id="nh3Max" type="number" min="0" value="25"></div>
+        </div>
+        <div style="margin:.75rem 0; font-size:.9rem" class="muted">
+          Faixas de temperatura por fase (padrão sugerido):
+          <ul>
+            <li>1–7 dias: 32–34 °C</li>
+            <li>8–14 dias: 29–31 °C</li>
+            <li>15–21 dias: 26–28 °C</li>
+            <li>22–28 dias: 23–25 °C</li>
+            <li>29–42 dias: 20–22 °C</li>
+          </ul>
+          Você pode ajustar abaixo e salvar.
+        </div>
+        <div class="form" id="phaseForm"></div>
+        <div style="margin-top:.75rem; display:flex; gap:.5rem">
+          <button id="saveCfg" class="btn" style="background:var(--ok)">Salvar Configurações</button>
+          <button id="reloadBtn" class="btn">Recarregar Dados</button>
+        </div>
+        <p class="muted" style="margin-top:.75rem">Endpoints: <code class="inline">/api/state</code>, <code class="inline">/api/mode</code>, <code class="inline">/api/actuators</code>, <code class="inline">/api/thresholds</code>.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>Painel Web IoT – ESP32 • Projeto Integrador (UNIVESP) • Lite – Ícones v2</footer>
+
+<script>
+// ===== Util =====
+const $ = sel => document.querySelector(sel);
+const api = { base: location.origin, async get(p){ const r=await fetch(this.base+p); if(!r.ok) throw new Error(await r.text()); return r.json(); }, async post(p,b){ const r=await fetch(this.base+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); if(!r.ok) throw new Error(await r.text()); return r.json(); } };
+$('#baseShow').textContent = api.base;
+
+let phaseTable = [
+  {name:'1–7 dias',   min:32, max:34, start:1,  end:7},
+  {name:'8–14 dias',  min:29, max:31, start:8,  end:14},
+  {name:'15–21 dias', min:26, max:28, start:15, end:21},
+  {name:'22–28 dias', min:23, max:25, start:22, end:28},
+  {name:'29–42 dias', min:20, max:22, start:29, end:42},
+];
+
+let state = { automatic:true, loteStart:null, idadeDias:null, readings:{temp:null, hum:null, nh3:null, lux:null, ts:null}, actuators:{fan:false, exh:false, heat:false, light:false} };
+let useMock = false;
+
+// Mock simples
+function mockNow(){
+  const t = Date.now();
+  if(!state.idadeDias) state.idadeDias = 10;
+  const fase = resolveFase(state.idadeDias);
+  const target = (fase.min + fase.max)/2;
+  const temp = +(target + (Math.sin(t/6e5)*1.5) + (Math.random()*1.0-0.5)).toFixed(1);
+  const hum  = +(60 + (Math.sin(t/8e5)*10) + (Math.random()*4-2)).toFixed(0);
+  const nh3  = +(15 + (Math.sin(t/1.2e6)*5) + (Math.random()*4-2)).toFixed(0);
+  const lux  = +(30 + (Math.sin(t/5e5)*15) + (Math.random()*6-3)).toFixed(0);
+  state.readings = {temp, hum, nh3, lux, ts: new Date().toISOString()};
+  state.actuators.fan  = temp > fase.max;
+  state.actuators.heat = temp < fase.min;
+  state.actuators.exh  = nh3 > (Number($('#nh3Max').value)||25);
+  state.actuators.light= lux < (Number($('#luxTarget').value)||30);
+}
+
+function resolveFase(idade){ for(const p of phaseTable){ if(idade >= p.start && idade <= p.end) return p; } return {name:'Fora das faixas', min:20, max:22}; }
+function setIconClass(sel, cls){ const el = $(sel); if(!el) return; el.classList.remove('ok','warn','bad','idle'); el.classList.add(cls||'idle'); }
+
+function applySensorIconColors(){
+  const idade = state.idadeDias || 1; const fase = resolveFase(idade);
+  const nh3Max = Number($('#nh3Max').value)||25; const luxTarget = Number($('#luxTarget').value)||30;
+
+  const inRange = state.readings.temp!=null && state.readings.temp>=fase.min && state.readings.temp<=fase.max;
+  setIconClass('#icoTherm', inRange ? 'ok' : 'bad');
+  $('#thermMercury').setAttribute('class', inRange ? 'ok' : 'bad');
+  $('#thermBulb').setAttribute('class', inRange ? 'ok' : 'bad');
+  $('#tempFlag').textContent = inRange ? 'Sim' : 'Não';
+
+  const hum = state.readings.hum; const humOk = hum!=null && hum>=50 && hum<=70;
+  setIconClass('#icoHum', humOk ? 'ok' : 'warn');
+  $('#humFill').setAttribute('class', humOk ? 'ok' : 'warn');
+
+  const nh3 = state.readings.nh3; const nh3Ok = nh3!=null && nh3 <= nh3Max;
+  setIconClass('#icoNh3', nh3Ok ? 'ok' : 'bad');
+  ;['#nh3Dot1','#nh3Dot2','#nh3Dot3'].forEach(id=> $(id).setAttribute('class', nh3Ok ? 'ok' : 'bad'));
+
+  const lux = state.readings.lux; const luxOk = lux!=null && lux >= luxTarget;
+  setIconClass('#icoLux', luxOk ? 'ok' : 'warn');
+}
+
+function applyActuatorIcons(){
+  const setAct = (on, icoSel, statusSel, toggleSel)=>{
+    setIconClass(icoSel, on ? 'ok' : 'bad');
+    const ico = $(icoSel);
+    if(icoSel==='#icoFan'){
+      const blades = ico.querySelector('.fanBlades');
+      if(blades){ blades.classList.remove('spin'); if(on) blades.classList.add('spin'); }
+    }
+    $(statusSel).textContent = on ? 'ON' : 'OFF';
+    const t = $(toggleSel); if(t){ t.checked = !!on; }
+  };
+  setAct(state.actuators.fan,  '#icoFan',  '#fanStatus',  '#fanToggle');
+  setAct(state.actuators.exh,  '#icoExh',  '#exhStatus',  '#exhToggle');
+  setAct(state.actuators.heat, '#icoHeat', '#heatStatus', '#heatToggle');
+  setAct(state.actuators.light,'#icoLight','#lightStatus','#lightToggle');
+}
+
+async function refreshState(){
+  try{
+    if(useMock){ mockNow(); setConnBadge(true); }
+    else { const s = await api.get('/api/state'); Object.assign(state, { readings:s.readings, actuators:s.actuators, automatic:s.automatic, loteStart:s.loteStart }); setConnBadge(true); }
+
+    if(state.loteStart){ const d0 = new Date(state.loteStart); const dd = Math.floor((Date.now() - d0.getTime())/86400000); state.idadeDias = dd; }
+    const fase = resolveFase(state.idadeDias || 1);
+
+    $('#tempVal').textContent = (state.readings.temp==null?'--':state.readings.temp+' °C');
+    $('#humVal').textContent  = (state.readings.hum==null?'--':state.readings.hum+' %');
+    $('#nh3Val').textContent  = (state.readings.nh3==null?'--':state.readings.nh3+' ppm');
+    $('#luxVal').textContent  = (state.readings.lux==null?'--':state.readings.lux+' lx');
+    $('#idadeVal').textContent= state.idadeDias ?? '--';
+    $('#faseVal').textContent = fase.name;
+    $('#tempRange').textContent = `${fase.min}–${fase.max} °C`;
+
+    $('#nh3Limit').textContent = Number($('#nh3Max').value)||25;
+    $('#luxTargetShow').textContent = Number($('#luxTarget').value)||30;
+
+    $('#modeToggle').checked = !!state.automatic;
+    for(const id of ['fanToggle','exhToggle','heatToggle','lightToggle']){ const el = document.getElementById(id); if(el) el.disabled = !!state.automatic; }
+
+    applySensorIconColors();
+    applyActuatorIcons();
+  }catch(err){ console.error('Estado:', err); setConnBadge(false); }
+}
+
+function setConnBadge(ok){
+  const b = $('#connBadge'); if(!b) return;
+  b.textContent = ok ? 'conectado' : 'desconectado';
+  b.style.background = ok ? 'rgba(16,185,129,.2)' : 'rgba(239,68,68,.2)';
+  b.style.color = ok ? '#10b981' : '#ef4444';
+}
+
+$('#connectBtn').addEventListener('click', ()=>{ useMock = $('#mockToggle').checked; refreshState(); });
+$('#mockToggle').addEventListener('change', e=>{ useMock = e.target.checked; });
+$('#modeToggle').addEventListener('change', async (e)=>{ const automatic = e.target.checked; state.automatic = automatic; if(useMock) return; try{ await api.post('/api/mode', {automatic}); }catch(err){ console.error(err); }});
+
+for(const [id, key] of [['fanToggle','fan'], ['exhToggle','exh'], ['heatToggle','heat'], ['lightToggle','light']]){
+  document.getElementById(id).addEventListener('change', async (e)=>{
+    state.actuators[key] = e.target.checked;
+    applyActuatorIcons();
+    if(useMock) return;
+    try{ await api.post('/api/actuators', state.actuators); }catch(err){ console.error(err); }
+  });
+}
+
+function capturePhaseForm(){ phaseTable = phaseTable.map((p,idx)=>({ ...p, min: Number(document.getElementById(`p${idx}min`).value), max: Number(document.getElementById(`p${idx}max`).value), })); }
+function saveCfgPayload(){
+  capturePhaseForm();
+  return { phases: phaseTable.map(p=>({name:p.name, start:p.start, end:p.end, min:p.min, max:p.max})), nh3Max: Number($('#nh3Max').value)||25, luxTarget: Number($('#luxTarget').value)||30, loteStart: $('#loteStart').value || state.loteStart || null };
+}
+$('#saveCfg').addEventListener('click', async ()=>{ const payload = saveCfgPayload(); state.loteStart = payload.loteStart; if(useMock){ alert('Configurações salvas (mock).'); return; } try{ await api.post('/api/thresholds', payload); alert('Configurações salvas.'); }catch(err){ console.error(err); alert('Falha ao salvar: '+err.message); } });
+$('#reloadBtn').addEventListener('click', ()=>{ refreshState(); });
+
+function fillPhaseForm(){ const form = $('#phaseForm'); form.innerHTML = ''; phaseTable.forEach((p,idx)=>{ const wrap = document.createElement('div'); wrap.className = 'field'; wrap.innerHTML = `<label>${p.name}</label><div class="row"><input type="number" step="0.1" id="p${idx}min" value="${p.min}"><span class="muted" style="padding:0 .25rem">a</span><input type="number" step="0.1" id="p${idx}max" value="${p.max}"><span class="muted">°C</span></div>`; form.appendChild(wrap); }); }
+fillPhaseForm();
+setInterval(refreshState, 5000);
+</script>
+</body>
+</html>
